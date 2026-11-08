@@ -79,40 +79,25 @@ body {
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
 <meta name="theme-color" content="#211d1c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NOT AGAIN">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
 /* Loading screen in the game's colours (not Godot grey); the splash image is assets/ui/boot_splash.png. */
 body,#status{background-color:#211d1c !important}
 #status-progress{accent-color:#fab836}
 #na-rotate{display:none;position:fixed;inset:0;z-index:9999;background:#211d1c;color:#f7eed9;font:700 20px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;align-items:center;justify-content:center;flex-direction:column;padding:24px;box-sizing:border-box}
 #na-rotate .phone{width:64px;height:104px;border:6px solid #f7eed9;border-radius:12px;margin-bottom:22px;animation:na-turn 2.2s ease-in-out infinite}
-#na-rotate small{display:block;margin-top:10px;font-weight:500;font-size:15px;color:#c2b5a0}
+#na-rotate small{display:block;margin-top:10px;font-weight:500;font-size:15px;color:#c2b5a0;max-width:420px}
 @keyframes na-turn{0%,25%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}
 @media (orientation:portrait) and (pointer:coarse){#na-rotate{display:flex}}
 </style>
-<script>
-(function(){
-  function add(){
-    if(document.getElementById('na-rotate'))return;
-    var d=document.createElement('div');d.id='na-rotate';
-    d.innerHTML='<div class="phone"></div>Turn your phone sideways<small>NOT AGAIN: SPIKEY plays in landscape. Tap after turning to go full screen.</small>';
-    document.body.appendChild(d);
-  }
-  if(document.body)add();else document.addEventListener('DOMContentLoaded',add);
-  var touch=('ontouchstart' in window)||navigator.maxTouchPoints>0;
-  function goFull(){
-    if(!touch)return;
-    var el=document.documentElement;
-    try{
-      if(!document.fullscreenElement&&el.requestFullscreen){
-        el.requestFullscreen({navigationUI:'hide'}).then(function(){
-          if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(function(){});
-        }).catch(function(){});
-      }
-    }catch(e){}
-  }
-  window.addEventListener('pointerdown',goFull,{passive:true});
-})();
-</script>
+<!-- Release settings (ads, accounts, payments): edit nag_config.js, no re-export needed. -->
+<script src="nag_config.js?v=0.7.0"></script>
+<script src="nag_platform.js?v=0.7.0"></script>
 
 	</head>
 	<body>
@@ -132,7 +117,7 @@ body,#status{background-color:#211d1c !important}
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":18721200,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":18744736,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
