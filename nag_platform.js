@@ -8,9 +8,13 @@
 //   Accounts  Supabase Auth over plain fetch: e-mail 6-digit code (or the magic link in
 //             the same e-mail). No passwords, no SDK, no extra download.
 //   Saves     one JSON row per player in the "saves" table (row-level security).
-//   Payments  Stripe Checkout, created by the "create-checkout" Supabase function;
-//             the "stripe-webhook" function records paid orders; the game collects
-//             them once with the claim_purchases() database function.
+//   Payments  Flutterwave hosted checkout (cards, bank transfer, USSD; naira or dollars),
+//             created by the "create-checkout" Supabase function. Coming back, the
+//             "confirm-payment" function verifies the payment with Flutterwave (the
+//             "flutterwave-webhook" does the same in the background); the game then
+//             collects it once with the claim_purchases() database function.
+//   Currency  Naira for players in Nigeria (device time zone / language), dollars for
+//             everyone else; the player can switch in the shop.
 //   Phones    full screen + landscape lock on the first tap, rotate-your-phone card,
 //             "Add to Home Screen" hint on iPhone (Safari has no full-screen API).
 (function () {
@@ -27,6 +31,38 @@
   var modalOpen = false;
   var modalReason = "";
   var magicLinkError = "";
+  var pendingConfirm = "";
+  var CURRENCY_KEY = "nag_currency";
+  var TIMEOUT_MS = 15000;
+
+  // A request that hangs (bad network, busy server) fails after 15 s instead of never.
+  function timedFetch(url, init) {
+    if (typeof AbortController === "undefined") return fetch(url, init);
+    var ctl = new AbortController();
+    var t = setTimeout(function () { ctl.abort(); }, TIMEOUT_MS);
+    init = init || {};
+    init.signal = ctl.signal;
+    return fetch(url, init).then(function (r) { clearTimeout(t); return r; }, function (e) { clearTimeout(t); throw e; });
+  }
+
+  // Nigeria -> naira, everyone else -> dollars, unless the player picked one.
+  function detectCurrency() {
+    try {
+      var chosen = localStorage.getItem(CURRENCY_KEY);
+      if (chosen === "NGN" || chosen === "USD") return chosen;
+    } catch (e) {}
+    var tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+    var langs = (navigator.languages || [navigator.language || ""]).join(",");
+    if (tz === "Africa/Lagos" || /-NG\b/i.test(langs)) return "NGN";
+    return "USD";
+  }
+  function setCurrency(c) {
+    try {
+      if (c === "NGN" || c === "USD") localStorage.setItem(CURRENCY_KEY, c);
+      else localStorage.removeItem(CURRENCY_KEY);
+    } catch (e) {}
+  }
 
   function supaOn() { return !!(cfg.supabaseUrl && cfg.supabaseAnonKey); }
   function payOn() { return supaOn() && !!cfg.paymentsEnabled; }
@@ -74,7 +110,7 @@
     if (auth && session) h["Authorization"] = "Bearer " + session.access_token;
     else h["Authorization"] = "Bearer " + cfg.supabaseAnonKey;
     if (extraHeaders) for (var k in extraHeaders) h[k] = extraHeaders[k];
-    return fetch(base() + path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) })
+    return timedFetch(base() + path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) })
       .then(function (res) {
         return res.text().then(function (t) {
           var data = null;
@@ -125,14 +161,30 @@
     }, function () { storeSession(null); });
   }
 
+  // Back from Flutterwave: ?nag_checkout=1&status=successful&tx_ref=...&transaction_id=...
   function readCheckoutReturn() {
     var q = new URLSearchParams(location.search);
-    var r = q.get("nag_checkout");
-    if (!r) return;
-    checkoutResult = r === "success" ? "success" : "cancel";
-    q.delete("nag_checkout");
+    if (!q.get("nag_checkout")) return;
+    var st = (q.get("status") || "").toLowerCase();
+    var id = q.get("transaction_id") || "";
+    checkoutResult = (st === "successful" || st === "completed") ? "success" : "cancel";
+    if (checkoutResult === "success" && /^\d+$/.test(id)) pendingConfirm = id;
+    ["nag_checkout", "status", "tx_ref", "transaction_id"].forEach(function (k) { q.delete(k); });
     var rest = q.toString();
     history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+  }
+  // Ask our server to verify that payment with Flutterwave right away.
+  function confirmPending() {
+    if (!pendingConfirm || !session || !payOn()) return;
+    var id = pendingConfirm;
+    pendingConfirm = "";
+    freshSession().then(function () {
+      return timedFetch(base() + "/functions/v1/confirm-payment", {
+        method: "POST",
+        headers: { "apikey": cfg.supabaseAnonKey, "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ transaction_id: id })
+      });
+    }).catch(function () { /* the webhook records it anyway */ });
   }
 
   // ---------------------------------------------------------------- auth API
@@ -152,7 +204,7 @@
     var s = session;
     storeSession(null);
     if (!s) return Promise.resolve();
-    return fetch(base() + "/auth/v1/logout", { method: "POST",
+    return timedFetch(base() + "/auth/v1/logout", { method: "POST",
       headers: { "apikey": cfg.supabaseAnonKey, "Authorization": "Bearer " + s.access_token } }).catch(function () {});
   }
 
@@ -175,19 +227,19 @@
   function listPurchases() {
     return authed("GET", "/rest/v1/purchases?select=product_id,created_at&order=created_at.asc").then(function (rows) { return rows || []; });
   }
-  function startCheckout(productId) {
+  function startCheckout(productId, currency) {
     if (!payOn()) return Promise.reject(new Error("payments are off"));
     var ret = location.origin + location.pathname;
     return freshSession().then(function () {
-      return fetch(base() + "/functions/v1/create-checkout", {
+      return timedFetch(base() + "/functions/v1/create-checkout", {
         method: "POST",
         headers: { "apikey": cfg.supabaseAnonKey, "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: productId, return_url: ret })
+        body: JSON.stringify({ product_id: productId, currency: currency || detectCurrency(), return_url: ret })
       });
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (b) {
         if (!res.ok || !b.url) throw new Error(b.error || ("checkout failed (" + res.status + ")"));
-        // Give the game a moment to finish writing its save, then leave for Stripe.
+        // Give the game a moment to finish writing its save, then leave for Flutterwave.
         setTimeout(function () { NAG._navigate(b.url); }, 700);
         return { url: b.url };
       });
@@ -319,7 +371,7 @@
     var send = el("button", { "class": "go", id: "nag-send" }, "SEND CODE");
     var cancel = el("button", { id: "nag-cancel" }, "NOT NOW");
     box.appendChild(send); box.appendChild(cancel); box.appendChild(err);
-    box.appendChild(el("small", null, "Accounts are run by " + (cfg.studioName || "the developer") + " on Supabase. We store your e-mail, your save and your purchases. See PRIVACY in the game."));
+    box.appendChild(el("small", null, "Accounts are run by " + (cfg.studioName || "the developer") + " on Supabase. We store your e-mail, your save and your purchases. Payments are handled by Flutterwave. See PRIVACY in the game."));
     cancel.onclick = closeAccount;
     function go() {
       var email = inp.value.trim();
@@ -439,7 +491,8 @@
         touch: touch,
         iOS: isIOS,
         standalone: standalone,
-        canFullscreen: canFullscreen()
+        canFullscreen: canFullscreen(),
+        currency: detectCurrency()
       };
       return JSON.stringify(s);
     },
@@ -462,12 +515,13 @@
         case "pushSave": return run(function () { return pushSave(args[0]); });
         case "claimPurchases": return run(claimPurchases);
         case "listPurchases": return run(listPurchases);
-        case "checkout": return run(function () { return startCheckout(String(args[0])); });
+        case "checkout": return run(function () { return startCheckout(String(args[0]), args[1] ? String(args[1]) : ""); });
         case "signOut": return run(signOut);
         default: var id = newOp(); fail(id, "unknown call " + name); return id;
       }
     },
     openAccount: function (reason) { return openAccount(reason); },
+    setCurrency: function (c) { setCurrency(c); },
     closeAccount: closeAccount,
     fullscreen: goFull,
     _navigate: function (url) { location.href = url; },
@@ -478,7 +532,7 @@
   // ---------------------------------------------------------------- boot
   loadSession();
   readCheckoutReturn();
-  if (supaOn()) readMagicLink();
+  if (supaOn()) readMagicLink().then(confirmPending);
   loadAds();
   if (document.body) addRotateCard(); else document.addEventListener("DOMContentLoaded", addRotateCard);
 })();

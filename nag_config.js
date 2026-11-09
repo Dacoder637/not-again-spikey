@@ -14,7 +14,7 @@ window.NAG_CONFIG = {
   // approved your site.
   adsTestMode: true,
 
-  // ---- Accounts, cloud saves and payments (Supabase + Stripe) ------------------
+  // ---- Accounts, cloud saves and payments (Supabase + Flutterwave) -------------
   // Supabase → Project Settings → API: "Project URL" and the "anon public" key.
   // The anon key is meant to be public; never put the service_role key here.
   // Empty = no sign-in; progress stays in this browser only and the shop's
@@ -22,7 +22,7 @@ window.NAG_CONFIG = {
   supabaseUrl: "",
   supabaseAnonKey: "",
 
-  // true once the Stripe functions are deployed (RELEASE_SETUP.md step 4).
+  // true once the Flutterwave functions are deployed (RELEASE_SETUP.md step 2).
   // false = sign-in and cloud saves work, real-money items still show "SOON".
   paymentsEnabled: false,
 
