@@ -64,6 +64,38 @@
     } catch (e) {}
   }
 
+  // ---------------------------------------------------------------- render scale
+  // Round 15 (DECISIONS §70): on a slow device the game can draw fewer pixels and let
+  // the browser scale the picture up (same layout, same controls, a little softer).
+  // Godot sizes its canvas from window.devicePixelRatio every frame, and maps clicks
+  // and touches by the canvas-to-CSS ratio, so reporting a smaller ratio is enough.
+  var RS_KEY = "nag_render_scale";
+  var dprDesc = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
+  var baseDpr = window.devicePixelRatio || 1;
+  function applyRenderScale(k) {
+    k = Number(k);
+    if (!(k >= 0.4 && k < 1)) {
+      try {
+        if (dprDesc) Object.defineProperty(window, "devicePixelRatio", dprDesc);
+        else delete window.devicePixelRatio;
+      } catch (e) {}
+      return;
+    }
+    var target = Math.min(baseDpr, 1) * k;
+    try {
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: function () { return target; } });
+    } catch (e) {}
+  }
+  function setRenderScale(k) {
+    k = Number(k);
+    try {
+      if (k >= 0.4 && k < 1) localStorage.setItem(RS_KEY, String(k));
+      else localStorage.removeItem(RS_KEY);
+    } catch (e) {}
+    applyRenderScale(k);
+  }
+  try { var savedRs = localStorage.getItem(RS_KEY); if (savedRs) applyRenderScale(savedRs); } catch (e) {}
+
   function supaOn() { return !!(cfg.supabaseUrl && cfg.supabaseAnonKey); }
   function payOn() { return supaOn() && !!cfg.paymentsEnabled; }
   function base() { return String(cfg.supabaseUrl || "").replace(/\/+$/, ""); }
@@ -522,6 +554,8 @@
     },
     openAccount: function (reason) { return openAccount(reason); },
     setCurrency: function (c) { setCurrency(c); },
+    setRenderScale: function (k) { setRenderScale(k); },
+    renderScale: function () { try { return Number(localStorage.getItem(RS_KEY) || 1); } catch (e) { return 1; } },
     closeAccount: closeAccount,
     fullscreen: goFull,
     _navigate: function (url) { location.href = url; },
