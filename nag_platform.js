@@ -17,6 +17,45 @@
 //             everyone else; the player can switch in the shop.
 //   Phones    full screen + landscape lock on the first tap, rotate-your-phone card,
 //             "Add to Home Screen" hint on iPhone (Safari has no full-screen API).
+// ---------------------------------------------------------------------------
+// WebAudio unlock (round 16, DECISIONS §71, P1-4).
+//
+// Browsers refuse to start audio until the page has seen a user gesture, and Godot's
+// web driver only gets its context resumed on the gesture it sees itself. That is why
+// a recording of the first minutes can be silent: nothing was tapped on the title
+// screen. This wraps AudioContext so that every context the engine creates is resumed
+// on the very first pointer / touch / key event. Defensive: if anything throws, the
+// original constructor is left in place and audio behaves exactly as before.
+(function () {
+  try {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx || Ctx.__nagUnlocked) return;
+    var made = [];
+    var Wrapped = function () {
+      var args = Array.prototype.slice.call(arguments);
+      var c = new (Function.prototype.bind.apply(Ctx, [null].concat(args)))();
+      made.push(c);
+      return c;
+    };
+    Wrapped.prototype = Ctx.prototype;
+    Wrapped.__nagUnlocked = true;
+    window.AudioContext = Wrapped;
+    if (window.webkitAudioContext) window.webkitAudioContext = Wrapped;
+    var unlock = function () {
+      for (var i = 0; i < made.length; i++) {
+        try {
+          if (made[i] && made[i].state === "suspended") made[i].resume();
+        } catch (e) { /* one context failing must not stop the rest */ }
+      }
+    };
+    ["pointerdown", "touchstart", "keydown", "mousedown"].forEach(function (t) {
+      window.addEventListener(t, unlock, true);
+    });
+  } catch (e) {
+    /* leave the platform browser's own audio handling alone */
+  }
+})();
+
 (function () {
   "use strict";
   var cfg = window.NAG_CONFIG || {};
