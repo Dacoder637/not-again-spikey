@@ -109,18 +109,27 @@
   // Godot sizes its canvas from window.devicePixelRatio every frame, and maps clicks
   // and touches by the canvas-to-CSS ratio, so reporting a smaller ratio is enough.
   var RS_KEY = "nag_render_scale";
+  // Round 17 (P2): never render above 2x. A 3x phone asks for 9x the pixels of a 1x one
+  // and 2.25x those of a 2x one, for no visible gain on a 6-inch screen: that is what
+  // made the game both soft-looking and slow. Capping at 2 keeps it crisp and cheap.
+  var DPR_CAP = 2;
   var dprDesc = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
   var baseDpr = window.devicePixelRatio || 1;
+  function cappedDpr() { return Math.min(baseDpr || 1, DPR_CAP); }
   function applyRenderScale(k) {
     k = Number(k);
     if (!(k >= 0.4 && k < 1)) {
       try {
-        if (dprDesc) Object.defineProperty(window, "devicePixelRatio", dprDesc);
-        else delete window.devicePixelRatio;
-      } catch (e) {}
+        Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: cappedDpr });
+      } catch (e) {
+        try {
+          if (dprDesc) Object.defineProperty(window, "devicePixelRatio", dprDesc);
+          else delete window.devicePixelRatio;
+        } catch (e2) {}
+      }
       return;
     }
-    var target = Math.min(baseDpr, 1) * k;
+    var target = cappedDpr() * k;
     try {
       Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: function () { return target; } });
     } catch (e) {}
@@ -595,6 +604,18 @@
     setCurrency: function (c) { setCurrency(c); },
     setRenderScale: function (k) { setRenderScale(k); },
     renderScale: function () { try { return Number(localStorage.getItem(RS_KEY) || 1); } catch (e) { return 1; } },
+    // Round 17 (P5): short haptics from the game (death, jump). The game only calls this
+    // when its "Vibration" setting is on; iOS Safari has no navigator.vibrate, so this is
+    // a silent no-op there. Capped to 80 ms so a bug can never leave a phone buzzing.
+    vibrate: function (ms) {
+      try {
+        var d = Number(ms) || 0;
+        if (d > 0 && d <= 80 && navigator.vibrate) navigator.vibrate(d);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
     closeAccount: closeAccount,
     fullscreen: goFull,
     _navigate: function (url) { location.href = url; },
@@ -603,6 +624,18 @@
   window.NAG = api;
 
   // ---------------------------------------------------------------- boot
+  // Apply the saved pixel ratio (and the 2x cap) before the engine asks for it.
+  try { applyRenderScale(api.renderScale()); } catch (e) {}
+  // Offline / instant second load (round 17, P1). sw.js caches icons, fonts and the
+  // platform scripts; index.html, index.js, index.wasm and index.pck stay NETWORK-FIRST,
+  // so a freshly exported build is always picked up on the next visit.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      try {
+        navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {});
+      } catch (e) {}
+    });
+  }
   loadSession();
   readCheckoutReturn();
   if (supaOn()) readMagicLink().then(confirmPending);
