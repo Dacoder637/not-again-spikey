@@ -617,6 +617,17 @@
       }
     },
     closeAccount: closeAccount,
+    // Round 18 (DECISIONS §73): "leave the game" from the main menu. A page can only
+    // close a tab it opened, so: leave fullscreen, go back in history if there is
+    // anywhere to go, else the configured exitUrl, else try close().
+    quitGame: function () {
+      try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+      try { if (window.history.length > 1) { window.history.back(); return true; } } catch (e) {}
+      var url = String(cfg.exitUrl || "");
+      if (url) { try { window.location.href = url; return true; } catch (e) {} }
+      try { window.close(); } catch (e) {}
+      return false;
+    },
     fullscreen: goFull,
     _navigate: function (url) { location.href = url; },
     _config: cfg
