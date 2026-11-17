@@ -27,5 +27,17 @@ window.NAG_CONFIG = {
   paymentsEnabled: false,
 
   // Shown in the sign-in box so players know who they are trusting.
-  studioName: "Dacoder637"
+  studioName: "Dacoder637",
+
+  // ---- Legal pages ---------------------------------------------------------------
+  // The address shown in the Privacy Policy and Terms "Contact" sections, as a
+  // mailto: link. Leave it "" and those pages show the GitHub project link instead.
+  // Deliberately empty: the owner must supply their own address (we never invent one).
+  contactEmail: "",
+
+  // ---- EXIT button on the main menu -------------------------------------------------
+  // Where "EXIT" goes when the game cannot close its own tab (it usually cannot). Set it
+  // to the page the game is embedded in, e.g. "https://dacoder637.github.io/playready/".
+  // Empty = go back in the browser history, and if there is nowhere to go, try to close.
+  exitUrl: ""
 };
